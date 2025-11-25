@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ABOR <-> IBOR Reconciliation</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" crossorigin="anonymous">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+  <style>.narrative{max-width:48rem}</style>
+  <script type="importmap">
+    {
+      "imports": {
+        "bootstrap-llm-provider": "https://cdn.jsdelivr.net/npm/bootstrap-llm-provider@1",
+        "saveform": "https://cdn.jsdelivr.net/npm/saveform@1",
+        "bootstrap-alert": "https://cdn.jsdelivr.net/npm/bootstrap-alert@1",
+        "asyncllm": "https://cdn.jsdelivr.net/npm/asyncllm@2",
+        "marked": "https://cdn.jsdelivr.net/npm/marked@13/+esm"
+      }
+    }
+  </script>
+</head>
+<body>
+  <nav class="navbar navbar-expand-lg bg-body-tertiary sticky-top" data-bs-theme="dark">
+    <div class="container-fluid">
+      <a class="navbar-brand" href="."> ABOR <-> IBOR Reconciliation</a>
+      <div class="bootstrap-dark-theme"></div>
+    </div>
+  </nav>
+
+  <div class="container-fluid">
+    <div class="row g-3">
+      <aside class="col-lg-4 col-xl-3">
+        <div class="card my-3">
+          <div class="card-header"><i class="bi bi-lightbulb"></i> Try These Examples</div>
+          <div class="list-group list-group-flush" id="example-list"></div>
+        </div>
+      </aside>
+
+      <main class="col-lg-8 col-xl-9">
+        <form id="task-form" class="narrative mx-auto my-3">
+          <div class="card">
+            <div class="card-header"><i class="bi bi-table"></i> Positions</div>
+            <div class="card-body">
+              <div class="row g-2">
+                <div class="col-md-6">
+                  <label class="form-label" for="abor">ABOR (CSV or PDF)</label>
+                  <textarea id="abor" rows="10" class="form-control" placeholder="instrument,qty,price\nAAPL,100,195.3\nTSLA,50,250.1"></textarea>
+                  <input id="abor-file" type="file" class="form-control mt-2" accept=".csv,.pdf">
+                  <div class="form-text">Upload .csv or .pdf; PDFs are text-extracted locally.</div>
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label" for="ibor">IBOR (CSV or PDF)</label>
+                  <textarea id="ibor" rows="10" class="form-control" placeholder="instrument,qty,price\nAAPL,100,195.3\nTSLA,40,260.0"></textarea>
+                  <input id="ibor-file" type="file" class="form-control mt-2" accept=".csv,.pdf">
+                  <div class="form-text">Upload .csv or .pdf; PDFs are text-extracted locally.</div>
+                </div>
+              </div>
+              <div class="form-text">Reconciliation is computed locally in the browser; no LLM required.</div>
+            </div>
+          </div>
+
+          <div class="card mt-3">
+            <div class="card-header"><i class="bi bi-sliders"></i> Options</div>
+            <div class="card-body row g-3">
+              <div class="col-md-6">
+                <label class="form-label" for="threshold">Exception Threshold</label>
+                <input id="threshold" type="number" step="0.01" class="form-control" value="0.01">
+                <div class="form-text">Min notional difference (as fraction of AUM) to flag.</div>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label" for="output">Output</label>
+                <select id="output" class="form-select">
+                  <option value="markdown">Markdown</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <div class="d-flex gap-2 my-3">
+            <button class="btn btn-primary" type="submit"><i class="bi bi-play"></i> Reconcile</button>
+            <button class="btn btn-outline-secondary" type="reset"><i class="bi bi-arrow-counterclockwise"></i> Reset</button>
+            
+          </div>
+
+          <div id="results" class="narrative my-3"></div>
+          <div id="llm-status" class="small text-muted my-2"></div>
+        </form>
+      </main>
+    </div>
+  </div>
+
+  <footer class="my-5 text-center text-muted"></footer>
+
+  <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" type="module"></script>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap-dark-theme@1/dist/dark-theme.js" type="module"></script>
+  <script src="./config.js" type="module"></script>
+  <script src="./script.js" type="module"></script>
+</body>
+</html>
+
