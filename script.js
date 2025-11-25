@@ -57,7 +57,7 @@ $iborFile?.addEventListener('change', async (e) => {
   } catch (err) { bootstrapAlert({ title: 'File Error', body: err.message, color: 'warning' }); }
 });
 
-// ----- Local reconciliation logic (no LLM) -----
+// ----- Local reconciliation logic (no LLM) + optional fuzzy matching -----
 function parsePositions(raw) {
   // Detect delimiter: CSV or whitespace; aggregate duplicates.
   const lines = raw.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
@@ -143,19 +143,29 @@ function detectCorporateAction(ab, ib) {
 function reconcile(aborRaw, iborRaw, thresholdFraction) {
   const ab = parsePositions(aborRaw);
   const ib = parsePositions(iborRaw);
+  const fuzzyEnabled = !!document.getElementById('fuzzy')?.checked;
+  const canon = buildCanonical(ab.rows, ib.rows, fuzzyEnabled);
+
+  // Build maps using canonical keys (IBOR remapped when fuzzy is enabled)
   const abMap = new Map(ab.rows.map(r => [r.instrument, r]));
-  const ibMap = new Map(ib.rows.map(r => [r.instrument, r]));
+  const ibEntries = ib.rows.map(r => ({ key: canon.get(r.instrument) || r.instrument, row: r }));
+  const ibMap = new Map();
+  for (const { key, row } of ibEntries) {
+    const cur = ibMap.get(key); if (!cur) ibMap.set(key, row); else {
+      // Aggregate remapped IBOR duplicates
+      cur.qty += row.qty;
+      if (row.price) cur.price = row.price;
+      if (isFinite(row.notional)) cur.notional = (isFinite(cur.notional) ? cur.notional : 0) + row.notional;
+      cur.flags = (cur.flags || []).concat(['Duplicate aggregated (fuzzy)']);
+    }
+  }
+
   const instruments = new Set([...abMap.keys(), ...ibMap.keys()]);
 
   // AUM from ABOR (sum abs notional where available)
-  let aum = 0;
-  for (const r of ab.rows) aum += Math.abs(computeNotional(r));
-  if (aum === 0) aum = 1; // avoid div by zero
+  let aum = 0; for (const r of ab.rows) aum += Math.abs(computeNotional(r)); if (aum === 0) aum = 1; // avoid div by zero
 
-  const out = [];
-  let totalDiff = 0;
-  let exceptions = 0;
-
+  const out = []; let totalDiff = 0; let exceptions = 0;
   for (const instr of instruments) {
     const abr = abMap.get(instr);
     const ibr = ibMap.get(instr);
@@ -174,6 +184,7 @@ function reconcile(aborRaw, iborRaw, thresholdFraction) {
     if ((abr && abr.price === 0 && !isFinite(abr.notional)) || (ibr && ibr.price === 0 && !isFinite(ibr.notional))) flags.push('Missing price/notional');
     const ca = detectCorporateAction(abr, ibr); if (ca) flags.push(ca);
     if (asset === 'fx' && Math.abs(diffQty) > 0 && Math.abs(diffNot) < 1e-6) flags.push('FX rounding');
+    if (canon.has(instr)) flags.push(`Matched to ABOR: ${canon.get(instr)}`);
 
     const isException = pctAum >= thresholdFraction;
     if (isException) exceptions += 1;
@@ -320,3 +331,32 @@ document.getElementById('task-form').addEventListener('submit', async (e) => {
     bootstrapAlert({ title: 'Error', body: err.message, color: 'danger' });
   }
 });
+
+// Simple normalization & Levenshtein for fuzzy matching
+function norm(s) { return (s || '').toUpperCase().replace(/[\s_.\-]+/g, ''); }
+function lev(a, b) {
+  const m = a.length, n = b.length; const dp = Array.from({ length: m + 1 }, () => Array(n + 1).fill(0));
+  for (let i = 0; i <= m; i++) dp[i][0] = i; for (let j = 0; j <= n; j++) dp[0][j] = j;
+  for (let i = 1; i <= m; i++) for (let j = 1; j <= n; j++) {
+    const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+    dp[i][j] = Math.min(dp[i - 1][j] + 1, dp[i][j - 1] + 1, dp[i - 1][j - 1] + cost);
+  }
+  return dp[m][n];
+}
+function similarity(a, b) {
+  if (!a || !b) return 0; const na = norm(a), nb = norm(b); if (!na || !nb) return 0;
+  const d = lev(na, nb); const maxLen = Math.max(na.length, nb.length) || 1; return 1 - d / maxLen;
+}
+function buildCanonical(abRows, ibRows, enabled) {
+  const canon = new Map(); if (!enabled) return canon; // empty map means identity
+  const abInstruments = abRows.map(r => r.instrument);
+  const ibInstruments = ibRows.map(r => r.instrument);
+  // Map each IBOR instrument to closest ABOR if sufficiently similar
+  for (const y of ibInstruments) {
+    if (abInstruments.includes(y)) { canon.set(y, y); continue; }
+    let best = null; let score = 0;
+    for (const x of abInstruments) { const s = similarity(x, y); if (s > score) { score = s; best = x; } }
+    if (best && score >= 0.85) canon.set(y, best); // threshold tuned to catch separators & minor typos
+  }
+  return canon;
+}
